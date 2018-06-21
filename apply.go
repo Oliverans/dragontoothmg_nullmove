@@ -4,6 +4,15 @@ package dragontoothmg
 // This function assumes that the given move is valid (i.e., is in the set of moves found by GenerateLegalMoves()).
 // If the move is not valid, this function has undefined behavior.
 func (b *Board) Apply(m Move) func() {
+	return b.Apply2(m).Unapply
+}
+
+// Applies a move to the board, and returns move application information and a function that can be used to unapply it.
+// This function assumes that the given move is valid (i.e., is in the set of moves found by GenerateLegalMoves()).
+// If the move is not valid, this function has undefined behavior.
+func (b *Board) Apply2(m Move) *MoveApplication {
+	var moveApplication MoveApplication
+	
 	// Configure data about which pieces move
 	var ourBitboardPtr, oppBitboardPtr *Bitboards
 	var epDelta int8                                // add this to the e.p. square to find the captured pawn
@@ -32,6 +41,11 @@ func (b *Board) Apply(m Move) func() {
 	fromBitboard := (uint64(1) << m.From())
 	toBitboard := (uint64(1) << m.To())
 	pieceType, pieceTypeBitboard := determinePieceType(ourBitboardPtr, fromBitboard)
+
+	moveApplication.FromPieceType = pieceType
+	moveApplication.CapturedPieceType = Nothing
+	moveApplication.IsCastling = false
+	
 	castleStatus := 0
 	var oldRookLoc, newRookLoc uint8
 	var flippedKsCastle, flippedQsCastle, flippedOppKsCastle, flippedOppQsCastle bool
@@ -91,6 +105,10 @@ func (b *Board) Apply(m Move) func() {
 		// (Rook - 1) assumes that "Nothing" precedes "Rook" in the Piece constants list
 		b.hash ^= pieceSquareZobristC[ourPiecesPawnZobristIndex+(Rook-1)][oldRookLoc]
 		b.hash ^= pieceSquareZobristC[ourPiecesPawnZobristIndex+(Rook-1)][newRookLoc]
+
+		moveApplication.IsCastling = true
+		moveApplication.RookCastleFrom = oldRookLoc
+		moveApplication.RookCastleTo = newRookLoc
 	}
 
 	// Is this an e.p. capture? Strip the opponent pawn and reset the e.p. square
@@ -103,6 +121,9 @@ func (b *Board) Apply(m Move) func() {
 		oppBitboardPtr.All &= ^(uint64(1) << epOpponentPawnLocation)
 		// Remove the opponent pawn from the board hash.
 		b.hash ^= pieceSquareZobristC[oppPiecesPawnZobristIndex][epOpponentPawnLocation]
+		
+		moveApplication.CapturedPieceType = Pawn
+		moveApplication.CaptureLocation = epOpponentPawnLocation
 	}
 	// Update the en passant square
 	if pieceType == Pawn && (int8(m.To())+2*epDelta == int8(m.From())) { // pawn double push
@@ -132,6 +153,8 @@ func (b *Board) Apply(m Move) func() {
 		promotedToPieceType = pieceType
 	}
 
+	moveApplication.ToPieceType = promotedToPieceType
+
 	// Apply the move
 	capturedPieceType, capturedBitboard := determinePieceType(oppBitboardPtr, toBitboard)
 	ourBitboardPtr.All &= ^fromBitboard // remove at "from"
@@ -142,6 +165,9 @@ func (b *Board) Apply(m Move) func() {
 		*capturedBitboard &= ^toBitboard
 		oppBitboardPtr.All &= ^toBitboard
 		b.hash ^= pieceSquareZobristC[oppPiecesPawnZobristIndex+(int(capturedPieceType)-1)][m.To()] // remove the captured piece from the hash
+		
+		moveApplication.CapturedPieceType = capturedPieceType
+		moveApplication.CaptureLocation = m.To()
 	}
 	b.hash ^= pieceSquareZobristC[(int(pieceType)-1)+ourPiecesPawnZobristIndex][m.From()]         // remove piece at "from"
 	b.hash ^= pieceSquareZobristC[(int(promotedToPieceType)-1)+ourPiecesPawnZobristIndex][m.To()] // add piece at "to"
@@ -164,8 +190,8 @@ func (b *Board) Apply(m Move) func() {
 	b.hash ^= uint64(oldEpCaptureSquare)
 	b.hash ^= uint64(b.enpassant)
 
-	// Return the unapply function (closure)
-	unapply := func() {
+	// Generate the unapply function (closure)
+	moveApplication.Unapply = func() {
 		// Flip the player to move
 		b.hash ^= whiteToMoveZobristC
 		b.Wtomove = !b.Wtomove
@@ -236,7 +262,8 @@ func (b *Board) Apply(m Move) func() {
 			b.flipOppQueensideCastle()
 		}
 	}
-	return unapply
+	
+	return &moveApplication
 }
 
 func determinePieceType(ourBitboardPtr *Bitboards, squareMask uint64) (Piece, *uint64) {

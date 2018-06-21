@@ -206,3 +206,16 @@ const (
 	Queen   = iota
 	King    = iota
 )
+
+// Move application data
+type MoveApplication struct {
+	Unapply           func()
+	FromPieceType     Piece
+	ToPieceType       Piece // Different from fromPieceType only for promotions
+	CapturedPieceType Piece // Nothing if this is not a capture
+	CaptureLocation   uint8
+	IsCastling        bool
+	RookCastleFrom    uint8 // Only valid if IsCastling
+	RookCastleTo      uint8 // Only valid if IsCastling
+}
+
