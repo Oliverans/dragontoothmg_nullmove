@@ -13,6 +13,16 @@ import (
 
 // The main API entrypoint. Generates all legal moves for a given board.
 func (b *Board) GenerateLegalMoves() []Move {
+	moves, _ := b.GenerateLegalMoves2(false)
+	return moves
+}
+
+
+// The main API entrypoint. Generates legal moves for a given board,
+//   either all moves (onlyCapturesPromosCheckEvasion == false), or
+//   limited to captures, promotions, and check evasion for quiescence search.
+// Return moves, isInCheck
+func (b *Board) GenerateLegalMoves2(onlyCapturesPromosCheckEvasion bool) ([]Move, bool) {
 	moves := make([]Move, 0, kDefaultMoveListLength)
 	// First, see if we are currently in check. If we are, invoke a special check-
 	// evasion move generator.
@@ -27,8 +37,8 @@ func (b *Board) GenerateLegalMoves() []Move {
 	}
 	kingAttackers, blockerDestinations := b.countAttacks(b.Wtomove, kingLocation, 2)
 	if kingAttackers >= 2 { // Under multiple attack, we must move the king.
-		b.kingPushes(&moves, ourPiecesPtr)
-		return moves
+		b.kingPushes(&moves, ourPiecesPtr, everything)
+		return moves, true
 	}
 
 	// Several move types can work in single check, but we must block the check
@@ -43,24 +53,39 @@ func (b *Board) GenerateLegalMoves() []Move {
 		b.rookMoves(&moves, nonpinnedPieces, blockerDestinations)
 		b.bishopMoves(&moves, nonpinnedPieces, blockerDestinations)
 		b.queenMoves(&moves, nonpinnedPieces, blockerDestinations)
-		b.kingPushes(&moves, ourPiecesPtr)
-		return moves
+		b.kingPushes(&moves, ourPiecesPtr, everything)
+		return moves, true
+	}
+
+	// If we're only interested in captures, then limit destinations to opponent pieces
+	allowDest := everything
+	if onlyCapturesPromosCheckEvasion {
+		allowDest = b.White.All
+		if b.Wtomove {
+			allowDest = b.Black.All
+		}
 	}
 
 	// Then, calculate all the absolutely pinned pieces, and compute their moves.
 	// If we are in check, we can only move to squares that block the check.
-	pinnedPieces := b.generatePinnedMoves(&moves, everything)
+	pinnedPieces := b.generatePinnedMoves(&moves, allowDest)
 	nonpinnedPieces := ^pinnedPieces
 
+	// always generate pawn promos
+	promoDest := onlyRank[0]
+	if b.Wtomove {
+		promoDest = onlyRank[7]
+	}
+	
 	// Finally, compute ordinary moves, ignoring absolutely pinned pieces on the board.
-	b.pawnPushes(&moves, nonpinnedPieces, everything)
-	b.pawnCaptures(&moves, nonpinnedPieces, everything)
-	b.knightMoves(&moves, nonpinnedPieces, everything)
-	b.rookMoves(&moves, nonpinnedPieces, everything)
-	b.bishopMoves(&moves, nonpinnedPieces, everything)
-	b.queenMoves(&moves, nonpinnedPieces, everything)
-	b.kingMoves(&moves)
-	return moves
+	b.pawnPushes(&moves, nonpinnedPieces, allowDest|promoDest)
+	b.pawnCaptures(&moves, nonpinnedPieces, allowDest)
+	b.knightMoves(&moves, nonpinnedPieces, allowDest)
+	b.rookMoves(&moves, nonpinnedPieces, allowDest)
+	b.bishopMoves(&moves, nonpinnedPieces, allowDest)
+	b.queenMoves(&moves, nonpinnedPieces, allowDest)
+	b.kingMoves(&moves, allowDest, /*includeCastling*/!onlyCapturesPromosCheckEvasion)
+	return moves, false
 }
 
 // Calculate the available moves for absolutely pinned pieces (pinned to the king).
@@ -193,11 +218,13 @@ func (b *Board) generatePinnedMoves(moveList *[]Move, allowDest uint64) uint64 {
 // Only pieces marked nonpinned can be moved. Only squares in allowDest can be moved to.
 func (b *Board) pawnPushes(moveList *[]Move, nonpinned uint64, allowDest uint64) {
 	targets, doubleTargets := b.pawnPushBitboards(nonpinned)
-	targets, doubleTargets = targets&allowDest, doubleTargets&allowDest
+
 	oneRankBack := 8
 	if b.Wtomove {
 		oneRankBack = -oneRankBack
 	}
+	
+	targets, doubleTargets = targets&allowDest, doubleTargets&allowDest
 	// push all pawns by one square
 	for targets != 0 {
 		target := bits.TrailingZeros64(targets)
@@ -356,8 +383,8 @@ func (b *Board) knightMoves(moveList *[]Move, nonpinned uint64, allowDest uint64
 	}
 }
 
-// Computes king moves without castling.
-func (b *Board) kingPushes(moveList *[]Move, ptrToOurBitboards *Bitboards) {
+// Computes king moves excluding castling.
+func (b *Board) kingPushes(moveList *[]Move, ptrToOurBitboards *Bitboards, allowDest uint64) {
 	ourKingLocation := uint8(bits.TrailingZeros64(ptrToOurBitboards.Kings))
 	noFriendlyPieces := ^(ptrToOurBitboards.All)
 
@@ -367,7 +394,7 @@ func (b *Board) kingPushes(moveList *[]Move, ptrToOurBitboards *Bitboards) {
 	oldKings := ptrToOurBitboards.Kings
 	ptrToOurBitboards.Kings = 0
 	ptrToOurBitboards.All &= ^(uint64(1) << ourKingLocation)
-	targets := kingMasks[ourKingLocation] & noFriendlyPieces
+	targets := kingMasks[ourKingLocation] & noFriendlyPieces & allowDest
 	for targets != 0 {
 		target := bits.TrailingZeros64(targets)
 		targets &= targets - 1
@@ -388,47 +415,53 @@ func (b *Board) kingPushes(moveList *[]Move, ptrToOurBitboards *Bitboards) {
 // Then, outputs castling moves (if any), and king moves.
 // Not thread-safe, since the king is removed from the board to compute
 // king-danger squares.
-func (b *Board) kingMoves(moveList *[]Move) {
-	// castling
-	var ourKingLocation uint8
-	var canCastleQueenside, canCastleKingside bool
+func (b *Board) kingMoves(moveList *[]Move, allowDest uint64, includeCastling bool) {
 	var ptrToOurBitboards *Bitboards
-	allPieces := b.White.All | b.Black.All
 	if b.Wtomove {
-		ourKingLocation = uint8(bits.TrailingZeros64(b.White.Kings))
 		ptrToOurBitboards = &(b.White)
-		// To castle, we must have rights and a clear path
-		kingsideClear := allPieces&((1<<5)|(1<<6)) == 0
-		queensideClear := allPieces&((1<<3)|(1<<2)|(1<<1)) == 0
-		// skip the king square, since this won't be called while in check
-		canCastleQueenside = b.whiteCanCastleQueenside() &&
-			queensideClear && !b.anyUnderDirectAttack(true, 2, 3)
-		canCastleKingside = b.whiteCanCastleKingside() &&
-			kingsideClear && !b.anyUnderDirectAttack(true, 5, 6)
 	} else {
-		ourKingLocation = uint8(bits.TrailingZeros64(b.Black.Kings))
 		ptrToOurBitboards = &(b.Black)
-		kingsideClear := allPieces&((1<<61)|(1<<62)) == 0
-		queensideClear := allPieces&((1<<57)|(1<<58)|(1<<59)) == 0
-		// skip the king square, since this won't be called while in check
-		canCastleQueenside = b.blackCanCastleQueenside() &&
-			queensideClear && !b.anyUnderDirectAttack(false, 58, 59)
-		canCastleKingside = b.blackCanCastleKingside() &&
-			kingsideClear && !b.anyUnderDirectAttack(false, 61, 62)
 	}
-	if canCastleKingside {
-		var move Move
-		move.Setfrom(Square(ourKingLocation)).Setto(Square(ourKingLocation + 2))
-		*moveList = append(*moveList, move)
-	}
-	if canCastleQueenside {
-		var move Move
-		move.Setfrom(Square(ourKingLocation)).Setto(Square(ourKingLocation - 2))
-		*moveList = append(*moveList, move)
+	
+	if includeCastling {
+		// castling
+		var ourKingLocation uint8
+		var canCastleQueenside, canCastleKingside bool
+		allPieces := b.White.All | b.Black.All
+		if b.Wtomove {
+			ourKingLocation = uint8(bits.TrailingZeros64(b.White.Kings))
+			// To castle, we must have rights and a clear path
+			kingsideClear := allPieces&((1<<5)|(1<<6)) == 0
+			queensideClear := allPieces&((1<<3)|(1<<2)|(1<<1)) == 0
+			// skip the king square, since this won't be called while in check
+			canCastleQueenside = b.whiteCanCastleQueenside() &&
+				queensideClear && !b.anyUnderDirectAttack(true, 2, 3)
+			canCastleKingside = b.whiteCanCastleKingside() &&
+				kingsideClear && !b.anyUnderDirectAttack(true, 5, 6)
+		} else {
+			ourKingLocation = uint8(bits.TrailingZeros64(b.Black.Kings))
+			kingsideClear := allPieces&((1<<61)|(1<<62)) == 0
+			queensideClear := allPieces&((1<<57)|(1<<58)|(1<<59)) == 0
+			// skip the king square, since this won't be called while in check
+			canCastleQueenside = b.blackCanCastleQueenside() &&
+				queensideClear && !b.anyUnderDirectAttack(false, 58, 59)
+			canCastleKingside = b.blackCanCastleKingside() &&
+				kingsideClear && !b.anyUnderDirectAttack(false, 61, 62)
+		}
+		if canCastleKingside {
+			var move Move
+			move.Setfrom(Square(ourKingLocation)).Setto(Square(ourKingLocation + 2))
+			*moveList = append(*moveList, move)
+		}
+		if canCastleQueenside {
+			var move Move
+			move.Setfrom(Square(ourKingLocation)).Setto(Square(ourKingLocation - 2))
+			*moveList = append(*moveList, move)
+		}
 	}
 
 	// non-castling
-	b.kingPushes(moveList, ptrToOurBitboards)
+	b.kingPushes(moveList, ptrToOurBitboards, allowDest)
 }
 
 // Generate all rook moves using magic bitboards.
