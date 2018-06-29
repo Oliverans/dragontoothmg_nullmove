@@ -13,7 +13,7 @@ func TestPawnPushes(t *testing.T) {
 	}
 	for k, v := range positions {
 		moves := make([]Move, 0, 45)
-		b := ParseFen(k)
+		b := parseFenAndValidate(t, k)
 		b.pawnPushes(&moves, everything, everything)
 		if len(moves) != v {
 			t.Error("Pawn pushes: wrong length. Expected", v, "but got",
@@ -30,7 +30,7 @@ func TestPawnCaptures(t *testing.T) {
 	}
 	for k, v := range positions {
 		moves := make([]Move, 0, 45)
-		b := ParseFen(k)
+		b := parseFenAndValidate(t, k)
 		b.pawnCaptures(&moves, everything, everything)
 		if len(moves) != v {
 			t.Error("Pawn captures: wrong length. Expected", v, "but got",
@@ -90,8 +90,8 @@ func TestKingPositions(t *testing.T) {
 	}
 	for k, v := range positions {
 		moves := make([]Move, 0, 45)
-		b := ParseFen(k)
-		b.kingMoves(&moves)
+		b := parseFenAndValidate(t, k)
+		b.kingMoves(&moves, ^uint64(0), /*includeCastling*/true)
 		if len(moves) != v {
 			t.Error("King moves: wrong length. Expected", v, "but got",
 				len(moves), "\nFor position:", k)
@@ -112,7 +112,7 @@ func TestRookPositions(t *testing.T) {
 	}
 	for k, v := range positions {
 		moves := make([]Move, 0, 45)
-		b := ParseFen(k)
+		b := parseFenAndValidate(t, k)
 		b.rookMoves(&moves, everything, everything)
 		if len(moves) != v {
 			t.Error("Rook moves: wrong length. Expected", v, "but got", len(moves))
@@ -129,7 +129,7 @@ func TestBishopPositions(t *testing.T) {
 	}
 	for k, v := range positions {
 		moves := make([]Move, 0, 45)
-		b := ParseFen(k)
+		b := parseFenAndValidate(t, k)
 		b.bishopMoves(&moves, everything, everything)
 		if len(moves) != v {
 			t.Error("Bishop moves: wrong length. Expected", v, "but got", len(moves))
@@ -146,7 +146,7 @@ func TestQueenPositions(t *testing.T) {
 	}
 	for k, v := range positions {
 		moves := make([]Move, 0, 45)
-		b := ParseFen(k)
+		b := parseFenAndValidate(t, k)
 		b.queenMoves(&moves, everything, everything)
 		if len(moves) != v {
 			t.Error("Queen moves: wrong length. Expected", v, "but got", len(moves))
@@ -155,7 +155,7 @@ func TestQueenPositions(t *testing.T) {
 }
 
 func TestUnderDirectAttack(t *testing.T) {
-	b1 := ParseFen("r1N1kbnN/3pp1p1/1p2q3/2rR1b2/2QP1nBR/6B1/1PP1P1P1/RNK4R b - - 0 0")
+	b1 := parseFenAndValidate(t, "r1N1kbnN/3pp1p1/1p2q3/2rR1b2/2QP1nBR/6B1/1PP1P1P1/RNK4R b - - 0 0")
 	solutionsByBlack := map[uint8]bool{
 		algebraicToIndexFatal("a5"): true,
 		algebraicToIndexFatal("a7"): true,
@@ -178,7 +178,7 @@ func TestUnderDirectAttack(t *testing.T) {
 		}
 	}
 
-	b2 := ParseFen("r1N1kbnN/3pp3/1p2q3/2rR1bpP/2QP1nBR/6B1/1PP1P1P1/RNK4R b - g6 0 0")
+	b2 := parseFenAndValidate(t, "r1N1kbnN/3pp3/1p2q3/2rR1bpP/2QP1nBR/6B1/1PP1P1P1/RNK4R b - g6 0 0")
 	solutionsByWhite := map[uint8]bool{
 		algebraicToIndexFatal("c2"): true, // TODO(dylhunn): this case is dubious
 		algebraicToIndexFatal("b3"): true,
@@ -212,7 +212,7 @@ func TestBreakCheck(t *testing.T) {
 		"8/8/8/1k6/3Pp3/8/8/K4Q2 b - d3 0 0":      6,  // en passant check evasion
 	}
 	for k, v := range positions {
-		b := ParseFen(k)
+		b := parseFenAndValidate(t, k)
 		moves := b.GenerateLegalMoves()
 		if len(moves) != v {
 			t.Error("Legal moves breaking check: wrong length. Expected", v, "but got", len(moves), "for position", b.ToFen())
@@ -230,7 +230,7 @@ func TestPinnedBishop(t *testing.T) {
 	}
 	for k, v := range positions {
 		moves := make([]Move, 0, 45)
-		b := ParseFen(k)
+		b := parseFenAndValidate(t, k)
 		b.generatePinnedMoves(&moves, everything)
 		if len(moves) != v {
 			t.Error("Legal moves for pinned bishops: wrong length. Expected", v, "but got", len(moves), "for position", b.ToFen())
@@ -245,7 +245,7 @@ func TestPinnedKnight(t *testing.T) {
 	}
 	for k, v := range positions {
 		moves := make([]Move, 0, 45)
-		b := ParseFen(k)
+		b := parseFenAndValidate(t, k)
 		b.generatePinnedMoves(&moves, everything)
 		if len(moves) != v {
 			t.Error("Legal moves for pinned bishops: wrong length. Expected", v, "but got", len(moves), "for position", b.ToFen())
@@ -260,7 +260,7 @@ func TestPinnedQueen(t *testing.T) {
 	}
 	for k, v := range positions {
 		moves := make([]Move, 0, 45)
-		b := ParseFen(k)
+		b := parseFenAndValidate(t, k)
 		b.generatePinnedMoves(&moves, everything)
 		if len(moves) != v {
 			t.Error("Legal moves for pinned bishops: wrong length. Expected", v, "but got", len(moves), "for position", b.ToFen())
@@ -293,7 +293,7 @@ func TestDiagPins(t *testing.T) {
 	}
 	for k, v := range positions {
 		moves := make([]Move, 0, 45)
-		b := ParseFen(k)
+		b := parseFenAndValidate(t, k)
 		result := b.generatePinnedMoves(&moves, everything)
 		if len(moves) != v {
 			t.Error("Legal moves for diagonal pins: wrong length. Expected", v, "but got", len(moves), "for position", b.ToFen())
@@ -316,7 +316,7 @@ func TestTrickyCornerCases(t *testing.T) {
 		"8/8/8/8/1kPp4/8/8/2K1B3 b - c3 0 0": 6, // e.p. breaks check
 	}
 	for k, v := range positions {
-		b := ParseFen(k)
+		b := parseFenAndValidate(t, k)
 		fenbefore := b.ToFen()
 		moves := b.GenerateLegalMoves()
 		fenafter := b.ToFen()
@@ -356,7 +356,7 @@ func TestOrthoPins(t *testing.T) {
 	}
 	for k, v := range positions {
 		moves := make([]Move, 0, 45)
-		b := ParseFen(k)
+		b := parseFenAndValidate(t, k)
 		result := b.generatePinnedMoves(&moves, everything)
 		if len(moves) != v {
 			t.Error("Legal moves for orthogonal pins: wrong length. Expected", v, "but got", len(moves), "for position", b.ToFen())
@@ -373,8 +373,8 @@ func TestOrthoPins(t *testing.T) {
 }
 
 func TestCountAttacks(t *testing.T) {
-	b := ParseFen("3B4/8/1k4Rq/P1pP1P2/8/2p5/3K3r/1n2b3 w - c6 0 0")
-	b2 := ParseFen("3B4/8/1k4Rq/P1pP1P2/8/2p5/3K3r/1n2b3 b - - 0 0")
+	b := parseFenAndValidate(t, "3B4/8/1k4Rq/P1pP1P2/8/2p5/3K3r/1n2b3 w - c6 0 0")
+	b2 := parseFenAndValidate(t, "3B4/8/1k4Rq/P1pP1P2/8/2p5/3K3r/1n2b3 b - - 0 0")
 	numAttacks, blockerDestinations := b.countAttacks(
 		true, algebraicToIndexFatal("d2"), 1000) // on white king
 	numAttacks2, blockerDestinations2 := b2.countAttacks(
@@ -386,7 +386,7 @@ func TestCountAttacks(t *testing.T) {
 }
 
 func testBugCases(t *testing.T) {
-	b := ParseFen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/4P3/1pN2Q1p/PPPBBPPP/R4RK1 w kq - 0 2")
+	b := parseFenAndValidate(t, "r3k2r/p1ppqpb1/bn2pnp1/3PN3/4P3/1pN2Q1p/PPPBBPPP/R4RK1 w kq - 0 2")
 	moves := b.GenerateLegalMoves()
 	for i, v := range moves {
 		fmt.Println(i, &v)
@@ -529,7 +529,7 @@ func TestLegalMoves(t *testing.T) {
 		"8/PPPk4/8/8/8/8/4Kppp/8 b - - 0 1":                                    18,
 		"n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1":                              24}
 	for k, v := range positions {
-		b := ParseFen(k)
+		b := parseFenAndValidate(t, k)
 		fenbefore := b.ToFen()
 		moves := b.GenerateLegalMoves()
 		fenafter := b.ToFen()

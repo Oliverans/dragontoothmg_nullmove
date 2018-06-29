@@ -9,7 +9,7 @@ import (
 // -----
 
 func testDivide(t *testing.T) {
-	b := ParseFen("nqn5/P1Pk4/8/8/8/6K1/7p/5N2 w - - 0 1")
+	b := parseFenAndValidate(t, "nqn5/P1Pk4/8/8/8/6K1/7p/5N2 w - - 0 1")
 	Divide(&b, 1)
 }
 
@@ -119,7 +119,7 @@ func TestPromotions(t *testing.T) {
 }
 
 func checkPerftResults(fen string, perftSolutions map[int]int64, t *testing.T) {
-	b := ParseFen(fen)
+	b := parseFenAndValidate(t, fen)
 	for i := 1; i <= len(perftSolutions); i++ {
 		beforeFen := b.ToFen()
 		result := Perft(&b, i)

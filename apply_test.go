@@ -6,13 +6,42 @@ import (
 
 // Test that two different sequences of moves involving en passant but leading to the same board have the same result
 func TestHashEpApplication(t *testing.T) {
-	b1 := ParseFen(Startpos)
+	b1 := parseFenAndValidate(t, Startpos)
 	b1.Apply(parseMove("e2e4"))
 	b1.Apply(parseMove("b8c6"))
-	b2 := ParseFen("r1bqkbnr/pppppppp/2n5/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1")
+	b2 := parseFenAndValidate(t, "r1bqkbnr/pppppppp/2n5/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1")
 	if b1.Hash() != b2.Hash() {
 		t.Error("Fen changed.")
 	}
+}
+
+// Returns unapply()
+func applyAndValidate(t *testing.T, b *Board, m Move) func() {
+	fen := b.ToFen()
+	
+	unapply := b.Apply(m)
+
+	isConsistent, badSquare := b.isConsistent()
+	
+	if !isConsistent {
+		t.Error("Inconsistent after moving", m, "from", fen, "with bad square", badSquare)
+	}
+
+	return unapply
+}
+
+func unapplyAndValidate(t *testing.T, b *Board, unapply func(), m Move) func() {
+	fen := b.ToFen()
+	
+	unapply()
+
+	isConsistent, badSquare := b.isConsistent()
+	
+	if !isConsistent {
+		t.Error("Inconsistent after unmoving", m, "from", fen, "with bad square", badSquare)
+	}
+
+	return unapply
 }
 
 func TestApplyUnapply(t *testing.T) {
@@ -81,7 +110,7 @@ func TestApplyUnapply(t *testing.T) {
 		"5k2/5p2/5P2/8/8/2r5/2rR2K1/4B2R w - - 0 1":                               "5k1R/5p2/5P2/8/8/2r5/2rR2K1/4B3 b - - 1 1",
 	}
 	for k, v := range movesMap {
-		b := ParseFen(k)
+		b := parseFenAndValidate(t, k)
 		oldHash := b.Hash()
 		fenBefore := b.ToFen()
 		fenAfter := b.ToFen()
@@ -91,7 +120,7 @@ func TestApplyUnapply(t *testing.T) {
 		if fenBefore != fenAfter {
 			t.Error("Fen changed during generation for board", k)
 		}
-		unapply := b.Apply(v)
+		unapply := applyAndValidate(t, &b, v)
 		if b.ToFen() != results[k] {
 			t.Error("Move application of\n", &v, "\ndidn't produce expected result for\n", k, "->\n",
 				results[k], "\nInstead, we got:\n", b.ToFen())
@@ -100,7 +129,7 @@ func TestApplyUnapply(t *testing.T) {
 			t.Error("Move apply changed board hash from expected result",
 				"\nwith move", &v)
 		}
-		unapply()
+		unapplyAndValidate(t, &b, unapply, v)
 		newHash := b.Hash()
 		if oldHash != newHash {
 			t.Error("(0) Move unapply (or previous apply) changed board hash for:\n",

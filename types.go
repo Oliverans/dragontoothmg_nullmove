@@ -22,7 +22,64 @@ type Board struct {
 	Fullmoveno    uint16
 	White         Bitboards
 	Black         Bitboards
+	pieces        [64]Piece // maps position->piece-type
 	hash          uint64
+}
+
+func bitSet(bits uint64, pos uint8) bool {
+	return bits & (uint64(1) << pos) != 0
+}
+
+// Return true iff the pieces board is consistent with the bitboards, and the (first) bad square otherwise.
+func (b *Board) isConsistent() (bool, uint8) {
+	// All pieces in the pieces board must match the corresponding bitboard
+	for i := uint8(0); i < 64; i++ {
+		piece := b.pieces[i]
+		pieceOk := true
+		switch piece {
+		case Nothing:
+			pieceOk = bitSet(^(b.White.All | b.Black.All), i)
+		case Pawn:
+			pieceOk = bitSet((b.White.Pawns | b.Black.Pawns), i)
+		case Knight:
+			pieceOk = bitSet((b.White.Knights | b.Black.Knights), i)
+		case Bishop:
+			pieceOk = bitSet((b.White.Bishops | b.Black.Bishops), i)
+		case Rook:
+			pieceOk = bitSet((b.White.Rooks | b.Black.Rooks), i)
+		case Queen:
+			pieceOk = bitSet((b.White.Queens | b.Black.Queens), i)
+		case King:
+			pieceOk = bitSet((b.White.Kings | b.Black.Kings), i)
+		default:
+			pieceOk = false
+		}
+
+		if !pieceOk {
+			return false, i
+		}
+
+	}
+	return true, 0
+}
+
+func (b *Board) addPiece(piece Piece, pos uint8, pieceBitboard *uint64, allBitboard *uint64) {
+	*pieceBitboard |= (uint64(1) << pos)
+	*allBitboard |= (uint64(1) << pos)
+	b.pieces[pos] = piece
+}
+
+func (b *Board) removePiece(piece Piece, pos uint8, pieceBitboard *uint64, allBitboard *uint64) {
+	*pieceBitboard &= ^(uint64(1) << pos)
+	*allBitboard &= ^(uint64(1) << pos)
+	b.pieces[pos] = Nothing
+}
+
+// To square MUST be empty - remove capture piece explicity before calling this
+// For promotions the destPiece/destTypeBitboard is not the same as the original piece/pieceBitboard
+func (b *Board) movePiece(piece Piece, destPiece Piece, from uint8, to uint8, pieceBitboard *uint64, destTypeBitboard *uint64, allBitboard *uint64) {
+	b.removePiece(piece, from, pieceBitboard, allBitboard)
+	b.addPiece(destPiece, to, destTypeBitboard, allBitboard)
 }
 
 // Return the Zobrist hash value for the board.
@@ -132,6 +189,18 @@ func (b *Board) flipOppKingsideCastle() {
 	}
 }
 
+func (b *Board) isWhitePieceAt(pos uint8) bool {
+	return b.White.All & (uint64(1) << pos) != 0
+}
+
+func (b *Board) isBlackPieceAt(pos uint8) bool {
+	return b.Black.All & (uint64(1) << pos) != 0
+}
+
+func (b *Board) PieceAt(pos uint8) Piece {
+	return b.pieces[pos]
+}
+
 // Contains bitboard representations of all the pieces for a side.
 type Bitboards struct {
 	Pawns   uint64
@@ -141,6 +210,26 @@ type Bitboards struct {
 	Queens  uint64
 	Kings   uint64
 	All     uint64
+}
+
+// Return the bitboard for the given piece - should really be a table lookup
+func (bb *Bitboards) pieceBitboard(piece Piece) *uint64 {
+	switch piece {
+	case Pawn:
+		return &bb.Pawns
+	case Knight:
+		return &bb.Knights
+	case Bishop:
+		return &bb.Bishops
+	case Rook:
+		return &bb.Rooks
+	case Queen:
+		return &bb.Queens
+	case King:
+		return &bb.Kings
+	default:
+		return nil
+	}
 }
 
 // Data stored inside, from LSB

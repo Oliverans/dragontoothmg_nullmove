@@ -27,12 +27,11 @@ func recomputeBoardHash(b *Board) uint64 {
 	}
 	hash ^= uint64(b.enpassant)
 	for i := uint8(0); i < 64; i++ {
-		whitePiece, _ := determinePieceType(&(b.White), uint64(1)<<i)
-		blackPiece, _ := determinePieceType(&(b.Black), uint64(1)<<i)
-		if whitePiece != Nothing {
-			hash ^= pieceSquareZobristC[whitePiece-1][i]
-		}
-		if blackPiece != Nothing {
+		if b.isWhitePieceAt(i) {
+			whitePiece, _ := determinePieceType(b, &(b.White), uint64(1)<<i, i)
+ 			hash ^= pieceSquareZobristC[whitePiece-1][i]
+		} else if b.isBlackPieceAt(i) {
+			blackPiece, _ := determinePieceType(b, &(b.Black), uint64(1)<<i, i)
 			hash ^= pieceSquareZobristC[blackPiece+5][i]
 		}
 	}
@@ -272,33 +271,33 @@ func ParseFen(fen string) Board {
 	for i := uint8(0); i < 64; i++ {
 		switch tokens[0][i] {
 		case 'p':
-			b.Black.Pawns |= 1 << i
+			b.addPiece(Pawn, i, &b.Black.Pawns, &b.Black.All)
 		case 'n':
-			b.Black.Knights |= 1 << i
+			b.addPiece(Knight, i, &b.Black.Knights, &b.Black.All)
 		case 'b':
-			b.Black.Bishops |= 1 << i
+			b.addPiece(Bishop, i, &b.Black.Bishops, &b.Black.All)
 		case 'r':
-			b.Black.Rooks |= 1 << i
+			b.addPiece(Rook, i, &b.Black.Rooks, &b.Black.All)
 		case 'q':
-			b.Black.Queens |= 1 << i
+			b.addPiece(Queen, i, &b.Black.Queens, &b.Black.All)
 		case 'k':
-			b.Black.Kings |= 1 << i
+			b.addPiece(King, i, &b.Black.Kings, &b.Black.All)
 		case 'P':
-			b.White.Pawns |= 1 << i
+			b.addPiece(Pawn, i, &b.White.Pawns, &b.White.All)
 		case 'N':
-			b.White.Knights |= 1 << i
+			b.addPiece(Knight, i, &b.White.Knights, &b.White.All)
 		case 'B':
-			b.White.Bishops |= 1 << i
+			b.addPiece(Bishop, i, &b.White.Bishops, &b.White.All)
 		case 'R':
-			b.White.Rooks |= 1 << i
+			b.addPiece(Rook, i, &b.White.Rooks, &b.White.All)
 		case 'Q':
-			b.White.Queens |= 1 << i
+			b.addPiece(Queen, i, &b.White.Queens, &b.White.All)
 		case 'K':
-			b.White.Kings |= 1 << i
+			b.addPiece(King, i, &b.White.Kings, &b.White.All)
 		}
 	}
-	b.White.All = b.White.Pawns | b.White.Knights | b.White.Bishops | b.White.Rooks | b.White.Queens | b.White.Kings
-	b.Black.All = b.Black.Pawns | b.Black.Knights | b.Black.Bishops | b.Black.Rooks | b.Black.Queens | b.Black.Kings
+	//b.White.All = b.White.Pawns | b.White.Knights | b.White.Bishops | b.White.Rooks | b.White.Queens | b.White.Kings
+	//b.Black.All = b.Black.Pawns | b.Black.Knights | b.Black.Bishops | b.Black.Rooks | b.Black.Queens | b.Black.Kings
 
 	b.Wtomove = tokens[1] == "w" || tokens[1] == "W"
 	if strings.Contains(tokens[2], "K") {

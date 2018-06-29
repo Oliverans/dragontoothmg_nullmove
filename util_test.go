@@ -62,8 +62,24 @@ func TestIdxToAlg(t *testing.T) {
 	}
 }
 
+func validateBoard(t *testing.T, b *Board) {
+	isConsistent, badSquare := b.isConsistent()
+
+	if !isConsistent {
+		t.Error("Invalid piece", b.PieceAt(badSquare), " on square ", badSquare)
+	}
+}
+
+func parseFenAndValidate(t *testing.T, fen string) Board {
+	b := ParseFen(fen)
+
+	validateBoard(t, &b)
+
+	return b
+}
+
 func TestParseFen(t *testing.T) {
-	b := ParseFen("1Q2rk2/2p2p2/1n4b1/N7/2B1Pp1q/2B4P/1QPP4/4K2R b K e3 4 30")
+	b := parseFenAndValidate(t, "1Q2rk2/2p2p2/1n4b1/N7/2B1Pp1q/2B4P/1QPP4/4K2R b K e3 4 30")
 	if b.Wtomove {
 		t.Error("Error parsing FEN")
 	}
@@ -110,7 +126,7 @@ func TestToFen(t *testing.T) {
 		"6nq/6p1/2B4n/1rB2r1R/5q2/2P5/1Q4n1/2B5 w - h8 6 12",
 		"6nq/6p1/2B4n/1rB2r1R/5q2/2P5/1Q4n1/2B5 b - - 2 999"}
 	for _, fen := range fenTests {
-		b := ParseFen(fen)
+		b := parseFenAndValidate(t, fen)
 		if b.ToFen() != fen {
 			t.Error("Error serializing FEN.\nOutput:  ", b.ToFen(), "\nExpected:", fen)
 		}
