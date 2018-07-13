@@ -254,6 +254,38 @@ func (b *Board) Apply2(m Move) *MoveApplication {
 	return &moveApplication
 }
 
+// Applies a null move to the board, and returns a function that can be used to unapply it.
+// A null move is just that - the current player skips his move.
+// Used for Null Move Heuristic in the search engine.
+func (b *Board) ApplyNullMove() func() {
+
+	// TODO - half-move clock?
+
+	// Clear the en-passant square
+	oldEpCaptureSquare := b.enpassant
+	b.enpassant = 0
+
+	// remove the old en passant square from the hash, and add the new one
+	b.hash ^= uint64(oldEpCaptureSquare)
+
+	// flip the side to move in the hash
+	b.hash ^= whiteToMoveZobristC
+	b.Wtomove = !b.Wtomove
+
+	// Generate the unapply function (closure)
+	unapply := func() {
+		// Flip the player to move
+		b.hash ^= whiteToMoveZobristC
+		b.Wtomove = !b.Wtomove
+
+		// Unapply en-passant square change
+		b.hash ^= uint64(oldEpCaptureSquare) // restore the old one to the hash
+		b.enpassant = oldEpCaptureSquare
+	}
+	
+	return unapply
+}
+
 func determinePieceType(b *Board, bb *Bitboards, squareMask uint64, pos uint8) (Piece, *uint64) {
 	piece := b.PieceAt(pos)
 
