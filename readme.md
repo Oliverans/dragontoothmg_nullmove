@@ -1,7 +1,31 @@
+
+
 [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](http://www.gnu.org/licenses/gpl-3.0)
 [![Build Status](https://travis-ci.org/dylhunn/dragontoothmg.svg?branch=master)](https://travis-ci.org/dylhunn/dragontoothmg)
 [![Documentation](https://img.shields.io/badge/Documentation-GoDoc-green.svg)](https://godoc.org/github.com/dylhunn/dragontoothmg)
 
+CUSTOM CHANGES
+==================================
+
+Added the possibility to do NULL-moves (i.e. swap side to move without doing any move).
+Use it with:
+`unApplyfunc := b.ApplyNullMove()`
+And  unapply using `unApplyfunc()` afterwards.
+
+#
+#
+#
+#
+#
+#
+
+Original README
+=================================================
+
+#
+#
+#
+#
 
 Dragontooth Movegen | Dylan D. Hunn
 ==================================
